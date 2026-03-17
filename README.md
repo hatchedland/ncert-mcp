@@ -34,7 +34,7 @@ flowchart TD
     sqlite[("SQLite\ncontent.db\nmetadata + text")]
     qdrant[("Qdrant\nlocal vector index")]
 
-    graph["curriculum_graph.py\nBuilds prerequisite edges via Gemini\n875+ edges across 14 subjects"]
+    cgraph["curriculum_graph.py\nBuilds prerequisite edges via Gemini\n875+ edges across 14 subjects"]
 
     mcp["mcp_server.py\n13 MCP tools over stdio"]
 
@@ -45,9 +45,9 @@ flowchart TD
     PDFs --> ingest --> pipeline
     pipeline --> sqlite
     pipeline --> qdrant
-    sqlite --> graph
-    qdrant --> graph
-    graph --> mcp
+    sqlite --> cgraph
+    qdrant --> cgraph
+    cgraph --> mcp
     mcp --> api
     api --> clients
 
