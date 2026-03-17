@@ -1,7 +1,7 @@
 """
 REST API — CBSE Ed-Tech Content Platform
 
-Exposes all MCP tools as HTTP endpoints with Supabase auth and per-user rate limiting.
+Exposes all MCP tools as HTTP endpoints.
 
 Run:
     cd /Users/rajanyadav/Documents/ed-stuff
@@ -16,13 +16,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from auth import get_current_user
-from config import SUPABASE_ANON_KEY, SUPABASE_URL
 from tools.filesystem import (
     get_chapter,
     get_chapter_metadata,
@@ -31,10 +29,9 @@ from tools.filesystem import (
     search_chapters,
 )
 from tools.database import get_curriculum_map, search_content
-from tools.generation import generate_explanation, generate_question, stream_explanation, stream_question
+from tools.generation import stream_explanation, stream_question
 from tools.graph import get_learning_path, get_prerequisites
 from tools.question_paper import EXAM_TEMPLATES, generate_question_paper
-from usage import check_and_increment, get_usage_summary
 
 app = FastAPI(
     title="CBSE Ed-Tech Content API",
@@ -64,24 +61,7 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/config", tags=["meta"])
-def public_config():
-    """Return Supabase public config needed by the frontend."""
-    return {
-        "supabase_url":      SUPABASE_URL,
-        "supabase_anon_key": SUPABASE_ANON_KEY,
-    }
-
-
-# ── Usage ─────────────────────────────────────────────────────────────────────
-
-@app.get("/usage/me", tags=["usage"])
-def my_usage(user: dict = Depends(get_current_user)):
-    """Return today's usage counts and remaining quota for the authenticated user."""
-    return get_usage_summary(user["id"])
-
-
-# ── Books (public) ────────────────────────────────────────────────────────────
+# ── Books ────────────────────────────────────────────────────────────────────
 
 @app.get("/books", tags=["books"])
 def api_list_books(
@@ -137,10 +117,8 @@ def api_search_content(
     subject:     str | None = Query(None, description="Filter by subject"),
     bloom_level: str | None = Query(None, description="remember|understand|apply|analyse|evaluate|create"),
     top_k:       int        = Query(8, ge=1, le=20, description="Max results"),
-    user: dict = Depends(get_current_user),
 ):
     """Semantic vector search over embedded NCERT chunks."""
-    check_and_increment(user["id"], "search")
     return search_content(
         query=query, grade=grade, subject=subject,
         bloom_level=bloom_level, top_k=top_k,
@@ -153,7 +131,7 @@ def api_get_curriculum_map(grade: int, subject: str):
     return get_curriculum_map(grade=grade, subject=subject)
 
 
-# ── Generation (auth + rate-limited) ─────────────────────────────────────────
+# ── Generation ───────────────────────────────────────────────────────────────
 
 class ExplainRequest(BaseModel):
     grade:    int
@@ -163,10 +141,7 @@ class ExplainRequest(BaseModel):
 
 
 @app.post("/explain", tags=["generation"])
-def api_generate_explanation(
-    body: ExplainRequest,
-    user: dict = Depends(get_current_user),
-):
+def api_generate_explanation(body: ExplainRequest):
     """
     Stream a RAG-grounded explanation of a CBSE topic using Gemini (SSE).
     Each SSE event is one of:
@@ -174,7 +149,6 @@ def api_generate_explanation(
       data: {"type": "done",  "source_chunks": [...], "model_used": "..."}
     language: 'en' (default) or 'hi' for Hindi.
     """
-    check_and_increment(user["id"], "explain")
 
     def event_stream():
         for text, meta in stream_explanation(
@@ -200,10 +174,7 @@ class QuestionRequest(BaseModel):
 
 
 @app.post("/question", tags=["generation"])
-def api_generate_question(
-    body: QuestionRequest,
-    user: dict = Depends(get_current_user),
-):
+def api_generate_question(body: QuestionRequest):
     """
     Stream a CBSE-style question grounded in NCERT content (SSE).
     Each SSE event is one of:
@@ -213,7 +184,6 @@ def api_generate_question(
     bloom_level:   remember | understand | apply | analyse | evaluate | create
     difficulty:    easy | medium | hard
     """
-    check_and_increment(user["id"], "question")
 
     def event_stream():
         for text, meta in stream_question(
@@ -229,7 +199,7 @@ def api_generate_question(
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-# ── Question paper (auth + rate-limited) ──────────────────────────────────────
+# ── Question paper ───────────────────────────────────────────────────────────
 
 class QuestionPaperRequest(BaseModel):
     grade:              int
@@ -255,10 +225,7 @@ def api_exam_types():
 
 
 @app.post("/question-paper", tags=["question_paper"])
-def api_generate_question_paper(
-    body: QuestionPaperRequest,
-    user: dict = Depends(get_current_user),
-):
+def api_generate_question_paper(body: QuestionPaperRequest):
     """
     Generate a complete CBSE-compliant question paper.
 
@@ -266,7 +233,6 @@ def api_generate_question_paper(
     chapters: list of chapter numbers; omit for full syllabus
     difficulty_mix: optional override e.g. {"easy": 0.3, "medium": 0.5, "hard": 0.2}
     """
-    check_and_increment(user["id"], "question_paper")
     result = generate_question_paper(
         grade=body.grade,
         subject=body.subject,
