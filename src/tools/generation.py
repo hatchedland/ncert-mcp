@@ -109,15 +109,23 @@ def generate_explanation(
         config=genai_types.GenerateContentConfig(temperature=0.4),
     )
 
+    mermaid = (
+        _generate_mermaid(topic, subject, grade, resp.text)
+        if _should_generate_diagram(topic, resp.text)
+        else {"diagram": None, "caption": None}
+    )
+
     return {
-        "topic":         topic,
-        "grade":         grade,
-        "subject":       subject,
-        "language":      language,
-        "stage":         _stage_config(grade)["stage"],
-        "explanation":   resp.text,
-        "source_chunks": [f"{c['source_file']}[{c['chunk_index']}]" for c in chunks],
-        "model_used":    GEMINI_MODEL_FAST,
+        "topic":           topic,
+        "grade":           grade,
+        "subject":         subject,
+        "language":        language,
+        "stage":           _stage_config(grade)["stage"],
+        "explanation":     resp.text,
+        "source_chunks":   [f"{c['source_file']}[{c['chunk_index']}]" for c in chunks],
+        "model_used":      GEMINI_MODEL_FAST,
+        "mermaid_diagram": mermaid["diagram"],
+        "mermaid_caption": mermaid["caption"],
     }
 
 
@@ -174,6 +182,63 @@ def generate_question(
         return {"error": "Failed to parse structured output", "raw": resp.text}
 
 
+# ── Mermaid diagram generation ────────────────────────────────────────────────
+
+# Topics where a flow/process diagram genuinely helps comprehension.
+# This heuristic avoids a Gemini call for definitions, formulas, and static facts.
+_DIAGRAM_KEYWORDS = {
+    "cycle", "process", "system", "chain", "flow", "stages", "steps",
+    "pathway", "mechanism", "hierarchy", "classification", "circuit",
+    "digestion", "photosynthesis", "respiration", "circulation", "ecosystem",
+    "water cycle", "carbon cycle", "nitrogen cycle", "rock cycle",
+    "food web", "food chain", "life cycle", "reproduction", "osmosis",
+    "diffusion", "refraction", "reflection", "conduction", "convection",
+    "mitosis", "meiosis", "excretion", "transpiration",
+}
+
+
+def _should_generate_diagram(topic: str, explanation: str) -> bool:
+    """Return True only when the topic is likely to benefit from a visual diagram."""
+    text = (topic + " " + explanation[:400]).lower()
+    return any(kw in text for kw in _DIAGRAM_KEYWORDS)
+
+
+def _generate_mermaid(topic: str, subject: str, grade: int, explanation: str) -> dict:
+    """
+    Generate a Mermaid flowchart for a topic already determined to be diagram-worthy.
+    Call _should_generate_diagram() before this — don't call unconditionally.
+    Returns {"diagram": str, "caption": str}.
+    """
+    prompt = (
+        f"Generate a Mermaid flowchart to visually explain '{topic}' "
+        f"for a Grade {grade} CBSE {subject} student.\n\n"
+        f"Context (from explanation):\n{explanation[:400]}\n\n"
+        f"Rules:\n"
+        f"- Use flowchart TD or LR. Max 10 nodes. Labels: 3-5 words max.\n"
+        f"- Node IDs: plain alphanumeric only (e.g. stepA, node1).\n"
+        f"- Forbidden node IDs: graph, end, style, subgraph, classDef, linkStyle.\n"
+        f"- Wrap every node label in double quotes.\n\n"
+        f'Return JSON: {{"diagram": "complete mermaid code", "caption": "one-line caption"}}'
+    )
+
+    resp = _client.models.generate_content(
+        model=GEMINI_MODEL_FAST,
+        contents=prompt,
+        config=genai_types.GenerateContentConfig(
+            temperature=0.2,
+            response_mime_type="application/json",
+        ),
+    )
+
+    try:
+        data = json.loads(resp.text)
+        if data.get("diagram"):
+            return {"diagram": data["diagram"], "caption": data.get("caption", "")}
+    except (json.JSONDecodeError, KeyError):
+        pass
+    return {"diagram": None, "caption": None}
+
+
 # ── Streaming variants (used by REST API, not MCP) ────────────────────────────
 
 def stream_explanation(
@@ -193,18 +258,28 @@ def stream_explanation(
     prompt = _explanation_prompt(grade, subject, topic, rag_text, language)
     source_chunks = [f"{c['source_file']}[{c['chunk_index']}]" for c in chunks]
 
+    full_text = ""
     for chunk in _client.models.generate_content_stream(
         model=GEMINI_MODEL_FAST,
         contents=prompt,
         config=genai_types.GenerateContentConfig(temperature=0.4),
     ):
         if chunk.text:
+            full_text += chunk.text
             yield (chunk.text, None)
 
+    mermaid = (
+        _generate_mermaid(topic, subject, grade, full_text)
+        if _should_generate_diagram(topic, full_text)
+        else {"diagram": None, "caption": None}
+    )
+
     yield ("", {
-        "source_chunks": source_chunks,
-        "model_used": GEMINI_MODEL_FAST,
-        "stage": _stage_config(grade)["stage"],
+        "source_chunks":   source_chunks,
+        "model_used":      GEMINI_MODEL_FAST,
+        "stage":           _stage_config(grade)["stage"],
+        "mermaid_diagram": mermaid["diagram"],
+        "mermaid_caption": mermaid["caption"],
     })
 
 
