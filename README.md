@@ -25,11 +25,11 @@ Built for ed-tech companies that want to build on top of NCERT content — expla
 
 ```mermaid
 flowchart TD
-    PDFs["📄 NCERT PDFs\n(Grades 7–12, 14 subjects)"]
+    PDFs["NCERT PDFs\nGrades 7-12, 14 subjects"]
 
     ingest["ingest.py\nDownloads PDFs from NCERT CDN"]
 
-    pipeline["pipeline.py\nchunk → Bloom-tag → embed → store\nGemini 2.5 Pro · gemini-embedding-001 3072-dim"]
+    pipeline["pipeline.py\nchunk - Bloom-tag - embed - store\nGemini 2.5 Pro, gemini-embedding-001 3072-dim"]
 
     sqlite[("SQLite\ncontent.db\nmetadata + text")]
     qdrant[("Qdrant\nlocal vector index")]
@@ -38,23 +38,24 @@ flowchart TD
 
     mcp["mcp_server.py\n13 MCP tools over stdio"]
 
-    api["api.py\nFastAPI REST API\n17 HTTP endpoints · SSE streaming"]
+    api["api.py\nFastAPI REST API\n17 HTTP endpoints, SSE streaming"]
 
-    clients["Ed-tech clients\nMCP hosts · frontends · mobile apps"]
+    clients["Ed-tech clients\nMCP hosts, frontends, mobile apps"]
 
     PDFs --> ingest --> pipeline
     pipeline --> sqlite
     pipeline --> qdrant
-    sqlite & qdrant --> graph
+    sqlite --> graph
+    qdrant --> graph
     graph --> mcp
     mcp --> api
     api --> clients
 
-    style PDFs   fill:#e0f2fe,stroke:#0284c7
-    style sqlite fill:#fef9c3,stroke:#ca8a04
-    style qdrant fill:#fef9c3,stroke:#ca8a04
-    style mcp    fill:#f0fdf4,stroke:#16a34a
-    style api    fill:#f0fdf4,stroke:#16a34a
+    style PDFs    fill:#e0f2fe,stroke:#0284c7
+    style sqlite  fill:#fef9c3,stroke:#ca8a04
+    style qdrant  fill:#fef9c3,stroke:#ca8a04
+    style mcp     fill:#f0fdf4,stroke:#16a34a
+    style api     fill:#f0fdf4,stroke:#16a34a
     style clients fill:#faf5ff,stroke:#9333ea
 ```
 
@@ -255,34 +256,46 @@ flowchart LR
     examples["examples/"]
     root_files["requirements.txt\n.env.example\nREADME.md"]
 
-    config["config.py\npaths · model names · API keys"]
+    config["config.py\npaths, model names, API keys"]
     db["db.py\nSQLite + Qdrant init"]
     ingest["ingest.py\ndownload NCERT PDFs"]
-    pipeline["pipeline.py\nchunk → tag → embed → store"]
-    text_cache["text_cache.py\nPDF → plain text (cached)"]
+    pipeline["pipeline.py\nchunk, tag, embed, store"]
+    text_cache["text_cache.py\nPDF to plain text cached"]
     curr_graph["curriculum_graph.py\nbuild prerequisite graph"]
-    mcp["mcp_server.py\nFastMCP · 13 tools · stdio"]
-    api["api.py\nFastAPI · 17 endpoints · SSE"]
-    auth["auth.py\nSupabase JWT · token cache"]
+    mcp["mcp_server.py\nFastMCP, 13 tools, stdio"]
+    api["api.py\nFastAPI, 17 endpoints, SSE"]
+    auth["auth.py\nSupabase JWT, token cache"]
     usage["usage.py\nper-user rate limiting"]
 
-    fs["filesystem.py\nBM25 · textbook tools"]
-    dbtools["database.py\nsemantic search · curriculum map"]
-    gen["generation.py\nexplain · question · streaming"]
-    graph["graph.py\nprerequisites · learning path"]
-    qp["question_paper.py\nfull paper · question bank"]
+    fs["filesystem.py\nBM25, textbook tools"]
+    dbtools["database.py\nsemantic search, curriculum map"]
+    gen["generation.py\nexplain, question, streaming"]
+    graph["graph.py\nprerequisites, learning path"]
+    qp["question_paper.py\nfull paper, question bank"]
 
-    chat["chat.html\ndemo UI · Supabase auth"]
+    chat["chat.html\ndemo UI, Supabase auth"]
 
     root --> src
     root --> examples
     root --> root_files
 
-    src --> config & db & ingest & pipeline & text_cache
-    src --> curr_graph & mcp & api & auth & usage
+    src --> config
+    src --> db
+    src --> ingest
+    src --> pipeline
+    src --> text_cache
+    src --> curr_graph
+    src --> mcp
+    src --> api
+    src --> auth
+    src --> usage
     src --> tools
 
-    tools --> fs & dbtools & gen & graph & qp
+    tools --> fs
+    tools --> dbtools
+    tools --> gen
+    tools --> graph
+    tools --> qp
 
     examples --> chat
 
