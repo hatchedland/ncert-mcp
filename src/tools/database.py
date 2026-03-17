@@ -70,15 +70,40 @@ def search_content(
                 (p["source_file"], p["chunk_index"]),
             ).fetchone()
         full_text = row["text"] if row else p.get("text", "")
+
+        grade   = p["grade"]
+        subject = p["subject"]
+        topic   = p["topic"] or query
+
+        bloom   = p.get("bloom_level") or "understand"
+        diff    = p.get("difficulty") or "medium"
+        chapter = p["chapter"]
+
+        # Human-readable summary built from pipeline-tagged metadata — no extra API call
+        highlight = (
+            f"Grade {grade} {subject} · Chapter {chapter} · "
+            f"Topic: {topic} · {bloom.capitalize()} · {diff}"
+        )
+
+        # Pre-filled params for common follow-up actions
+        actions = {
+            "explain":       {"grade": grade, "subject": subject, "topic": topic},
+            "question":      {"grade": grade, "subject": subject, "topic": topic,
+                              "bloom_level": bloom, "difficulty": diff},
+            "learning_path": {"grade": grade, "subject": subject, "topic": topic},
+        }
+
         results.append({
             "score":       round(hit.score, 4),
-            "grade":       p["grade"],
-            "subject":     p["subject"],
-            "chapter":     p["chapter"],
+            "grade":       grade,
+            "subject":     subject,
+            "chapter":     chapter,
             "chunk_index": p["chunk_index"],
-            "bloom_level": p["bloom_level"],
-            "topic":       p["topic"],
-            "difficulty":  p["difficulty"],
+            "bloom_level": bloom,
+            "topic":       topic,
+            "difficulty":  diff,
+            "highlight":   highlight,
+            "actions":     actions,
             "text":        full_text,
             "source_file": p["source_file"],
         })
