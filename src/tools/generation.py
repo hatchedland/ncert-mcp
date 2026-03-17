@@ -136,6 +136,35 @@ def generate_explanation(
     }
 
 
+_QUESTION_FORMATTING = (
+    "Formatting rules:\n"
+    "- Use LaTeX for all formulas: $...$ inline, $$...$$ for display equations.\n"
+    "- Use **bold** for key terms in the question text.\n"
+    "- Use numbered list entries in marking_scheme for multi-step answers.\n"
+)
+
+
+def _question_prompt(
+    grade: int, subject: str, topic: str,
+    bloom_level: str, difficulty: str, question_type: str, marks: int,
+    distractor_note: str, rag_text: str,
+) -> str:
+    return (
+        f"Generate a CBSE-style {question_type} question.\n"
+        f"Grade: {grade}, Subject: {subject}\n"
+        f"Topic: {topic}\n"
+        f"Bloom's level: {bloom_level}\n"
+        f"Difficulty: {difficulty}\n"
+        f"Marks: {marks}\n"
+        f"{distractor_note}\n\n"
+        f"{_QUESTION_FORMATTING}\n"
+        f"Base the question strictly on this NCERT source material:\n{rag_text}\n\n"
+        f"Return a JSON object with these exact fields:\n"
+        f"  question (string), bloom_level (string), marks (integer),\n"
+        f"  answer (string), marking_scheme (array of strings), distractors (array of strings)."
+    )
+
+
 def generate_question(
     grade: int,
     subject: str,
@@ -160,18 +189,9 @@ def generate_question(
         else "Set 'distractors' to an empty array []."
     )
 
-    prompt = (
-        f"Generate a CBSE-style {question_type} question.\n"
-        f"Grade: {grade}, Subject: {subject}\n"
-        f"Topic: {topic}\n"
-        f"Bloom's level: {bloom_level}\n"
-        f"Difficulty: {difficulty}\n"
-        f"Marks: {marks}\n"
-        f"{distractor_note}\n\n"
-        f"Base the question strictly on this NCERT source material:\n{rag_text}\n\n"
-        f"Return a JSON object with these exact fields:\n"
-        f"  question (string), bloom_level (string), marks (integer),\n"
-        f"  answer (string), marking_scheme (array of strings), distractors (array of strings)."
+    prompt = _question_prompt(
+        grade, subject, topic, bloom_level, difficulty, question_type, marks,
+        distractor_note, rag_text,
     )
 
     resp = _client.models.generate_content(
@@ -315,18 +335,9 @@ def stream_question(
         else "Set 'distractors' to an empty array []."
     )
 
-    prompt = (
-        f"Generate a CBSE-style {question_type} question.\n"
-        f"Grade: {grade}, Subject: {subject}\n"
-        f"Topic: {topic}\n"
-        f"Bloom's level: {bloom_level}\n"
-        f"Difficulty: {difficulty}\n"
-        f"Marks: {marks}\n"
-        f"{distractor_note}\n\n"
-        f"Base the question strictly on this NCERT source material:\n{rag_text}\n\n"
-        f"Return a JSON object with these exact fields:\n"
-        f"  question (string), bloom_level (string), marks (integer),\n"
-        f"  answer (string), marking_scheme (array of strings), distractors (array of strings)."
+    prompt = _question_prompt(
+        grade, subject, topic, bloom_level, difficulty, question_type, marks,
+        distractor_note, rag_text,
     )
 
     raw = ""

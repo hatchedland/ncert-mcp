@@ -201,6 +201,15 @@ def _generate_one(
         distractor_note = "Set 'distractors' to []."
         type_note = f"Case-study based question ({marks} marks)"
 
+    formatting = (
+        "Formatting rules (apply where relevant):\n"
+        "- Use LaTeX for all formulas: $...$ inline, $$...$$ for display equations.\n"
+        "- Use **bold** for key terms in question text.\n"
+        "- Use numbered lists in marking_scheme entries for multi-step answers.\n"
+        "- For case_study: use Markdown in case_passage (short paragraphs, bold key data, "
+        "tables for comparative data if needed). case_passage must be 80-120 words.\n"
+    )
+
     prompt = (
         f"Generate a CBSE-style {type_note}.\n"
         f"Grade: {grade}, Subject: {subject}\n"
@@ -209,11 +218,12 @@ def _generate_one(
         f"Difficulty: {difficulty}\n"
         f"Marks: {marks}\n"
         f"{distractor_note}\n\n"
+        f"{formatting}\n"
         f"Base the question strictly on this NCERT source material:\n{rag_text}\n\n"
         f"Return a JSON object with these exact fields:\n"
         f"  question (string), bloom_level (string), marks (int),\n"
         f"  answer (string), marking_scheme (array of strings), distractors (array of strings).\n"
-        f"For case_study type, also include a 'case_passage' field (string, 80–120 words)."
+        f"For case_study type, also include a 'case_passage' field (string, 80-120 words)."
     )
 
     resp = _client.models.generate_content(
