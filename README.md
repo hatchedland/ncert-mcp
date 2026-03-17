@@ -12,7 +12,7 @@ Built for ed-tech companies that want to build on top of NCERT content — expla
 |-----------|-------------|
 | **Semantic search** | Vector search over 400k+ NCERT text chunks (Gemini embeddings) |
 | **Keyword search** | BM25 search across all chapter PDFs |
-| **RAG explanations** | Grade-aware explanations grounded in NCERT text (Gr 7 ≠ Gr 12 tone) |
+| **RAG explanations** | Grade-aware explanations with Markdown structure, LaTeX formulas, Mermaid diagrams, and callout notes |
 | **Question generation** | Structured MCQ / SAQ / LAQ with marking schemes, Bloom's tagging |
 | **Question papers** | Full CBSE-pattern papers: weekly test → pre-board → board exam |
 | **Curriculum graph** | 875+ prerequisite edges across 14 subjects — powers learning paths |
@@ -104,7 +104,7 @@ flowchart TD
 | GET | `/search/chapters` | BM25 keyword search |
 | GET | `/search/content` | Semantic search |
 | GET | `/curriculum/{grade}/{subject}` | Curriculum map |
-| POST | `/explain` | Stream explanation (SSE) |
+| POST | `/explain` | Stream explanation (SSE) — Markdown, LaTeX, Mermaid diagram |
 | POST | `/question` | Stream question generation (SSE) |
 | GET | `/exam-types` | List supported exam types |
 | POST | `/question-paper` | Generate full question paper |
@@ -202,6 +202,39 @@ python src/curriculum_graph.py
 ```
 
 Calls Gemini once per subject to identify prerequisite edges between topics. Produces 800+ edges across all subjects. Safe to re-run.
+
+---
+
+## Explanation response format
+
+`POST /explain` streams SSE events. Each chunk event carries a piece of the explanation text. The final `done` event carries metadata:
+
+```json
+{ "type": "chunk", "text": "## Photosynthesis\n\nPlants use **chlorophyll**..." }
+{ "type": "done",
+  "source_chunks": ["grade_7_science_ch1[4]", "..."],
+  "model_used": "gemini-2.0-flash",
+  "stage": "Middle",
+  "mermaid_diagram": "flowchart TD\n  sunlight --> ...",
+  "mermaid_caption": "Photosynthesis process"
+}
+```
+
+The explanation text is structured Markdown:
+
+| Element | Syntax | Rendered as |
+|---------|--------|-------------|
+| Section headings | `## Heading` | Bold section title |
+| Key vocabulary | `**term**` | Bold on first use |
+| Steps / sequences | `1. step` | Numbered list |
+| Types / properties | `- item` | Bullet list |
+| Important reminders | `> **Note:** ...` | Blue callout box |
+| Worked examples | `> **Example:** ...` | Green callout box |
+| Comparisons | `\| col \| col \|` | Table |
+| Inline formula | `$E = mc^2$` | KaTeX rendered |
+| Display equation | `$$F = ma$$` | KaTeX block |
+
+`mermaid_diagram` is only present for process/cycle/hierarchy topics (e.g. photosynthesis, water cycle, food chain). It is `null` for definitions and static facts.
 
 ---
 
