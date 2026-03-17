@@ -270,7 +270,7 @@ flowchart LR
     fs["filesystem.py\nBM25, textbook tools"]
     dbtools["database.py\nsemantic search, curriculum map"]
     gen["generation.py\nexplain, question, streaming"]
-    graph["graph.py\nprerequisites, learning path"]
+    graphtools["graph.py\nprerequisites, learning path"]
     qp["question_paper.py\nfull paper, question bank"]
 
     chat["chat.html\ndemo UI, Supabase auth"]
@@ -294,7 +294,7 @@ flowchart LR
     tools --> fs
     tools --> dbtools
     tools --> gen
-    tools --> graph
+    tools --> graphtools
     tools --> qp
 
     examples --> chat
