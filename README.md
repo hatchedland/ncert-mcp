@@ -10,7 +10,7 @@ Built for ed-tech companies that want to build on top of NCERT content — expla
 
 | Capability | Description |
 |-----------|-------------|
-| **Semantic search** | Vector search over 400k+ NCERT text chunks (Gemini embeddings) |
+| **Semantic search** | Vector search over NCERT chunks — each result includes topic highlight, Bloom's level, and pre-filled actions (explain, question, learning path) |
 | **Keyword search** | BM25 search across all chapter PDFs |
 | **RAG explanations** | Grade-aware explanations with Markdown structure, LaTeX formulas, Mermaid diagrams, and callout notes |
 | **Question generation** | Structured MCQ / SAQ / LAQ with marking schemes, Bloom's tagging |
@@ -102,7 +102,7 @@ flowchart TD
 | GET | `/books/{grade}/{subject}/chapters/{n}` | Full chapter text |
 | GET | `/books/{grade}/{subject}/chapters/{n}/metadata` | Chapter metadata |
 | GET | `/search/chapters` | BM25 keyword search |
-| GET | `/search/content` | Semantic search |
+| GET | `/search/content` | Semantic search — returns `highlight`, `actions`, `topic`, `bloom_level` per result |
 | GET | `/curriculum/{grade}/{subject}` | Curriculum map |
 | POST | `/explain` | Stream explanation (SSE) — Markdown, LaTeX, Mermaid diagram |
 | POST | `/question` | Stream question generation (SSE) |
@@ -202,6 +202,37 @@ python src/curriculum_graph.py
 ```
 
 Calls Gemini once per subject to identify prerequisite edges between topics. Produces 800+ edges across all subjects. Safe to re-run.
+
+---
+
+## Search response format
+
+`GET /search/content` returns an array of results. Each result includes metadata-derived context and pre-filled action params — no extra API calls needed:
+
+```json
+[
+  {
+    "score": 0.91,
+    "grade": 9,
+    "subject": "Science",
+    "chapter": 2,
+    "topic": "Photosynthesis",
+    "bloom_level": "understand",
+    "difficulty": "medium",
+    "highlight": "Grade 9 Science · Chapter 2 · Topic: Photosynthesis · Understand · Medium",
+    "actions": {
+      "explain":       { "grade": 9, "subject": "Science", "topic": "Photosynthesis" },
+      "question":      { "grade": 9, "subject": "Science", "topic": "Photosynthesis", "bloom_level": "understand", "difficulty": "medium" },
+      "learning_path": { "grade": 9, "subject": "Science", "topic": "Photosynthesis" }
+    },
+    "text": "...(full chunk text)...",
+    "source_file": "grade_9_science_ch2.pdf",
+    "chunk_index": 14
+  }
+]
+```
+
+Pass `actions.explain` directly to `POST /explain`, `actions.question` to `POST /question`, or `actions.learning_path` to `GET /graph/learning-path`.
 
 ---
 
