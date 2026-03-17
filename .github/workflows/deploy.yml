@@ -1,59 +1,52 @@
-name: Deploy to Cloud Run
+name: Deploy to VM
 
 on:
   push:
     branches: [production]
 
-env:
-  PROJECT_ID: school-490323
-  REGION: asia-south1
-  SERVICE: ncert-mcp
-  IMAGE: gcr.io/school-490323/ncert-mcp
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write   # required for Workload Identity Federation
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+      - name: Copy source to VM (excludes data/)
+        uses: appleboy/scp-action@v0.1.7
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          host: ${{ secrets.GCE_HOST }}
+          username: rajanyadav
+          key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
+          source: "src/,requirements.txt,examples/"
+          target: /home/deploy/ncert-mcp
+          strip_components: 0
 
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+      - name: Install deps, write .env, restart service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.GCE_HOST }}
+          username: rajanyadav
+          key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            APP=/home/deploy/ncert-mcp
 
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker --quiet
+            # Python venv (create once, reuse on subsequent deploys)
+            if [ ! -d "$APP/.venv" ]; then
+              python3 -m venv $APP/.venv
+            fi
+            $APP/.venv/bin/pip install --quiet --upgrade pip
+            $APP/.venv/bin/pip install --quiet -r $APP/requirements.txt
 
-      - name: Build and push image
-        run: |
-          docker build -t $IMAGE:${{ github.sha }} -t $IMAGE:latest .
-          docker push $IMAGE:${{ github.sha }}
-          docker push $IMAGE:latest
+            # Write .env (data/ is already on the VM from a prior scp/pipeline run)
+            cat > $APP/.env <<'ENVEOF'
+            GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+            SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+            ENVEOF
 
-      - name: Deploy to Cloud Run
-        run: |
-          gcloud run deploy $SERVICE \
-            --image $IMAGE:${{ github.sha }} \
-            --platform managed \
-            --region $REGION \
-            --allow-unauthenticated \
-            --memory 2Gi \
-            --cpu 2 \
-            --min-instances 0 \
-            --max-instances 10 \
-            --set-env-vars "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }},SUPABASE_URL=${{ secrets.SUPABASE_URL }},SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }},SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
-
-      - name: Print service URL
-        run: |
-          gcloud run services describe $SERVICE \
-            --region $REGION \
-            --format 'value(status.url)'
+            # Restart the service
+            sudo systemctl restart ncert-mcp
+            sudo systemctl status ncert-mcp --no-pager
