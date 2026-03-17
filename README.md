@@ -375,6 +375,51 @@ flowchart LR
 
 ---
 
+## Deploying to Google Cloud Run
+
+The pipeline data (SQLite + Qdrant) is baked into the Docker image. Rebuild and redeploy when pipeline data changes.
+
+### Prerequisites
+
+```bash
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com
+```
+
+### 1. Run the pipeline locally first
+
+```bash
+python src/ingest.py
+python src/pipeline.py
+python src/curriculum_graph.py
+```
+
+### 2. Build and push the image
+
+```bash
+gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/ncert-mcp
+```
+
+### 3. Deploy
+
+```bash
+gcloud run deploy ncert-mcp \
+  --image gcr.io/YOUR_PROJECT_ID/ncert-mcp \
+  --platform managed \
+  --region asia-south1 \
+  --allow-unauthenticated \
+  --memory 2Gi \
+  --cpu 2 \
+  --set-env-vars "GOOGLE_API_KEY=YOUR_KEY,SUPABASE_URL=https://evldglrodfxkgchzaawl.supabase.co,SUPABASE_ANON_KEY=YOUR_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY"
+```
+
+Cloud Run will output a service URL. Set that as `NEXT_PUBLIC_API_URL` in your frontend.
+
+> **Note:** The image includes `data/` (pipeline output). If you update the pipeline, rebuild and redeploy the image.
+
+---
+
 ## Tech stack
 
 | Layer | Choice | Why |
