@@ -79,6 +79,8 @@ def _explanation_prompt(grade: int, subject: str, topic: str, rag_text: str, lan
         f"Source material (NCERT):\n{rag_text}\n\n"
         f"Task: Explain '{topic}' for a Grade {grade} student.\n"
         f"Format: {stage['depth']}. Max {stage['max_words']} words.\n"
+        f"For any mathematical or chemical formula, use LaTeX notation: "
+        f"$...$ for inline (e.g. $E=mc^2$) and $$...$$ for display equations.\n"
         f"{lang_instruction}"
     )
 
