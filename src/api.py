@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from tools.filesystem import (
@@ -46,14 +46,71 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_CHAT_HTML = Path(__file__).parent.parent / "examples" / "chat.html"
+# ── Meta ──────────────────────────────────────────────────────────────────────
 
-
-# ── UI + meta ─────────────────────────────────────────────────────────────────
-
-@app.get("/", include_in_schema=False)
+@app.get("/", tags=["meta"])
 def root():
-    return FileResponse(str(_CHAT_HTML))
+    return {
+        "name":        "ncert-mcp",
+        "version":     "1.0.0",
+        "synopsis":    "NCERT-grounded CBSE content API — search, explain, generate questions & curriculum graphs.",
+        "base_url":    "http://34.171.42.160:8000",
+        "docs":        "http://34.171.42.160:8000/docs",
+        "source":      "https://github.com/rajanyadav/ncert-mcp",
+        "sections": {
+            "BOOKS": {
+                "description": "Browse NCERT textbooks by grade and subject.",
+                "endpoints": [
+                    "GET  /books                                        — list all books (optional ?grade=&subject=)",
+                    "GET  /books/{grade}/{subject}/topics               — chapter list for a textbook",
+                    "GET  /books/{grade}/{subject}/chapters/{chapter}   — full chapter text + metadata",
+                    "GET  /books/{grade}/{subject}/chapters/{chapter}/metadata  — metadata only (fast)",
+                ],
+            },
+            "SEARCH": {
+                "description": "Keyword and semantic search over NCERT content.",
+                "endpoints": [
+                    "GET  /search/chapters   — BM25 keyword search  (?query=&grade=&subject=&top_k=)",
+                    "GET  /search/content    — semantic vector search (?query=&grade=&subject=&bloom_level=&top_k=)",
+                ],
+            },
+            "CURRICULUM": {
+                "description": "Bloom's level distribution across chapters for a grade/subject.",
+                "endpoints": [
+                    "GET  /curriculum/{grade}/{subject}",
+                ],
+            },
+            "GENERATION": {
+                "description": "RAG-grounded explanation and question generation via Gemini (SSE streaming).",
+                "endpoints": [
+                    "POST /explain          — stream explanation  {grade, subject, topic, language='en'|'hi'}",
+                    "POST /question         — stream question     {grade, subject, topic, bloom_level, difficulty, question_type, marks}",
+                ],
+            },
+            "QUESTION_PAPER": {
+                "description": "Generate complete CBSE-compliant question papers.",
+                "endpoints": [
+                    "GET  /exam-types        — list supported exam types",
+                    "POST /question-paper    — {grade, subject, exam_type, chapters?, difficulty_mix?, include_answer_key}",
+                ],
+                "exam_types": ["class_test", "weekly_test", "monthly_test", "mid_term", "pre_board", "board"],
+            },
+            "GRAPH": {
+                "description": "Curriculum prerequisite graph — learning paths and dependencies.",
+                "endpoints": [
+                    "GET  /graph/prerequisites   — direct prerequisites (?topic=&grade=&subject=)",
+                    "GET  /graph/learning-path   — full ordered path to a topic (?topic=&grade=&subject=)",
+                ],
+            },
+            "META": {
+                "endpoints": [
+                    "GET  /         — this page",
+                    "GET  /health   — liveness check",
+                    "GET  /docs     — interactive OpenAPI docs",
+                ],
+            },
+        },
+    }
 
 
 @app.get("/health", tags=["meta"])
