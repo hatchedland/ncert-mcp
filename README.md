@@ -1,214 +1,85 @@
 # ncert-mcp
 
-An open-source **Model Context Protocol (MCP) server** and **REST API** that turns the entire NCERT/CBSE curriculum (Grades 7–12) into structured, queryable infrastructure.
+An open-source **MCP server** and **REST API** that turns the entire NCERT/CBSE curriculum (Grades 7–12) into structured, queryable infrastructure.
 
-Built for ed-tech companies that want to build on top of NCERT content — explanations, question generation, question papers, semantic search, and curriculum graphs — without rebuilding the data pipeline themselves.
+Built for ed-tech companies — LMS platforms, tutoring apps, teacher tools — that want NCERT-grounded explanations, question generation, question papers, and curriculum graphs without rebuilding the data pipeline.
+
+**Hosted API:** `http://34.171.42.160:8000` · [Interactive docs](http://34.171.42.160:8000/docs)
 
 ---
 
 ## What it does
 
 | Capability | Description |
-|-----------|-------------|
-| **Semantic search** | Vector search over NCERT chunks — each result includes topic highlight, Bloom's level, and pre-filled actions (explain, question, learning path) |
-| **Keyword search** | BM25 search across all chapter PDFs |
-| **RAG explanations** | Grade-aware explanations with Markdown structure, LaTeX formulas, Mermaid diagrams, and callout notes |
-| **Question generation** | Structured MCQ / SAQ / LAQ with marking schemes, Bloom's tagging |
-| **Question papers** | Full CBSE-pattern papers: weekly test → pre-board → board exam |
-| **Curriculum graph** | 875+ prerequisite edges across 14 subjects — powers learning paths |
-| **Question bank** | Persistent store; questions reused across papers, never re-generated |
-| **REST API** | All tools exposed as HTTP endpoints for non-MCP clients |
+|---|---|
+| Semantic search | Vector search over NCERT chunks — topic, Bloom's level, difficulty, pre-filled action params |
+| Keyword search | BM25 search across all chapter PDFs |
+| RAG explanations | Grade-aware explanations — Markdown, LaTeX, Mermaid diagrams. Streams via SSE |
+| Question generation | Structured MCQ / SAQ / LAQ with marking schemes and Bloom's tagging. Streams via SSE |
+| Question papers | Full CBSE-pattern papers: class test → board exam. Backed by a persistent question bank |
+| Curriculum graph | 875+ prerequisite edges across 14 subjects — powers learning paths |
+| REST API | All capabilities as HTTP endpoints |
+| MCP server | All capabilities as MCP tools for Claude Desktop / Claude Code |
 
 ---
 
-## Architecture
+## LMS Integration Guide
 
-```mermaid
-flowchart TD
-    PDFs["NCERT PDFs\nGrades 7-12, 14 subjects"]
+This section covers how to wire ncert-mcp into a typical LMS: content browsing, search, adaptive explanations, assessments, and curriculum mapping.
 
-    ingest["ingest.py\nDownloads PDFs from NCERT CDN"]
+### Base URL
 
-    pipeline["pipeline.py\nchunk - Bloom-tag - embed - store\nGemini 2.5 Pro, gemini-embedding-001 3072-dim"]
-
-    sqlite[("SQLite\ncontent.db\nmetadata + text")]
-    qdrant[("Qdrant\nlocal vector index")]
-
-    cgraph["curriculum_graph.py\nBuilds prerequisite edges via Gemini\n875+ edges across 14 subjects"]
-
-    mcp["mcp_server.py\n13 MCP tools over stdio"]
-
-    api["api.py\nFastAPI REST API\n17 HTTP endpoints, SSE streaming"]
-
-    clients["Ed-tech clients\nMCP hosts, frontends, mobile apps"]
-
-    PDFs --> ingest --> pipeline
-    pipeline --> sqlite
-    pipeline --> qdrant
-    sqlite --> cgraph
-    qdrant --> cgraph
-    cgraph --> mcp
-    mcp --> api
-    api --> clients
-
-    style PDFs    fill:#e0f2fe,stroke:#0284c7
-    style sqlite  fill:#fef9c3,stroke:#ca8a04
-    style qdrant  fill:#fef9c3,stroke:#ca8a04
-    style mcp     fill:#f0fdf4,stroke:#16a34a
-    style api     fill:#f0fdf4,stroke:#16a34a
-    style clients fill:#faf5ff,stroke:#9333ea
 ```
+http://34.171.42.160:8000
+```
+
+All endpoints return JSON. Generation endpoints (`/explain`, `/question`) stream [Server-Sent Events (SSE)](#sse-streaming).
 
 ---
 
-## MCP Tools
+### 1. Content browser
 
-### Textbook tools (file-system, no DB required)
+Let students browse the NCERT curriculum before diving into a topic.
 
-| Tool | Description |
-|------|-------------|
-| `tool_list_books` | List available NCERT textbooks, filter by grade/subject |
-| `tool_list_topics` | Chapter titles for a textbook |
-| `tool_get_chapter` | Full extracted text of one chapter |
-| `tool_get_chapter_metadata` | Source URL, download date (fast, no PDF parse) |
-| `tool_search_chapters` | BM25 keyword search across all PDFs |
-
-### RAG + generation tools (requires pipeline)
-
-| Tool | Description |
-|------|-------------|
-| `tool_search_content` | Semantic vector search with grade/subject/Bloom's filters |
-| `tool_get_curriculum_map` | Topics + Bloom's distribution by chapter |
-| `tool_generate_explanation` | RAG-grounded explanation, grade-stage aware |
-| `tool_generate_question` | Single structured question (MCQ/SAQ/LAQ) |
-| `tool_generate_question_paper` | Full CBSE-pattern paper (weekly → board exam) |
-
-### Curriculum graph tools (requires curriculum_graph.py)
-
-| Tool | Description |
-|------|-------------|
-| `tool_get_prerequisites` | Direct prerequisite topics for a given topic |
-| `tool_get_learning_path` | Full ordered prerequisite chain, roots first |
-
----
-
-## REST API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check |
-| GET | `/books` | List textbooks |
-| GET | `/books/{grade}/{subject}/topics` | Chapter list |
-| GET | `/books/{grade}/{subject}/chapters/{n}` | Full chapter text |
-| GET | `/books/{grade}/{subject}/chapters/{n}/metadata` | Chapter metadata |
-| GET | `/search/chapters` | BM25 keyword search |
-| GET | `/search/content` | Semantic search — returns `highlight`, `actions`, `topic`, `bloom_level` per result |
-| GET | `/curriculum/{grade}/{subject}` | Curriculum map |
-| POST | `/explain` | Stream explanation (SSE) — Markdown, LaTeX, Mermaid diagram |
-| POST | `/question` | Stream question generation (SSE) |
-| GET | `/exam-types` | List supported exam types |
-| POST | `/question-paper` | Generate full question paper |
-| GET | `/graph/prerequisites` | Prerequisite topics |
-| GET | `/graph/learning-path` | Full learning path |
-
-Interactive docs: `http://localhost:8000/docs`
-
----
-
-## Quick start
-
-### Prerequisites
-
-- Python 3.11+
-- A [Google AI Studio](https://aistudio.google.com/apikey) API key (Gemini — free tier works for the API, paid recommended for pipeline speed)
-
-### 1. Clone and set up
-
-```bash
-git clone https://github.com/hatchedland/ncert-mcp
-cd ncert-mcp
-
-python3 -m venv .venv
-source .venv/bin/activate
-
-pip install -r requirements.txt
+**List all books (with optional filters):**
+```http
+GET /books?grade=10&subject=Science
 ```
-
-### 2. Configure
-
-```bash
-cp .env.example .env
-# Edit .env and add your GOOGLE_API_KEY
-```
-
-### 3. Run the MCP server (with existing data)
-
-If you have a pre-built `data/` directory (see [Releases](#) for a downloadable snapshot):
-
-```bash
-python src/mcp_server.py
-```
-
-Configure in Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-
 ```json
-{
-  "mcpServers": {
-    "ncert-mcp": {
-      "command": "/path/to/ncert-mcp/.venv/bin/python",
-      "args": ["/path/to/ncert-mcp/src/mcp_server.py"],
-      "env": {
-        "GOOGLE_API_KEY": "<your key>"
-      }
-    }
+[
+  {
+    "grade": 10,
+    "subject": "Science",
+    "book_code": "jesc1",
+    "num_chapters": 13
   }
-}
+]
 ```
 
-### 4. Run the REST API
+**List chapters in a book:**
+```http
+GET /books/10/Science/topics
+```
+```json
+[
+  { "chapter": 1, "title": "Chemical Reactions and Equations" },
+  { "chapter": 2, "title": "Acids, Bases and Salts" }
+]
+```
 
-```bash
-uvicorn src.api:app --reload --port 8000
+**Get full chapter text:**
+```http
+GET /books/10/Science/chapters/1
 ```
 
 ---
 
-## Building the data pipeline from scratch
+### 2. Search
 
-> **Time estimate:** ~90 minutes total. The pipeline calls Gemini 2.5 Pro per chapter (~35s each, 145 chapters).
-
-### Step 1 — Ingest NCERT PDFs
-
-```bash
-python src/ingest.py
+**Semantic search** (recommended for topic discovery and AI features):
+```http
+GET /search/content?query=photosynthesis&grade=9&subject=Science&top_k=5
 ```
-
-Downloads all NCERT textbook PDFs (Grades 7–12, 9 subjects) to `data/raw/ncert_pdfs/`. Safe to re-run — already-downloaded files are skipped.
-
-### Step 2 — Chunk → Tag → Embed → Store
-
-```bash
-python src/pipeline.py
-```
-
-Reads text cache → chunks (512 tokens, 64 overlap) → tags with Gemini (Bloom's level, topic, difficulty) → embeds with `gemini-embedding-001` (3072-dim) → stores in SQLite + Qdrant.
-
-Idempotent — already-processed chapters are skipped automatically.
-
-### Step 3 — Build the curriculum graph
-
-```bash
-python src/curriculum_graph.py
-```
-
-Calls Gemini once per subject to identify prerequisite edges between topics. Produces 800+ edges across all subjects. Safe to re-run.
-
----
-
-## Search response format
-
-`GET /search/content` returns an array of results. Each result includes metadata-derived context and pre-filled action params — no extra API calls needed:
-
 ```json
 [
   {
@@ -225,54 +96,182 @@ Calls Gemini once per subject to identify prerequisite edges between topics. Pro
       "question":      { "grade": 9, "subject": "Science", "topic": "Photosynthesis", "bloom_level": "understand", "difficulty": "medium" },
       "learning_path": { "grade": 9, "subject": "Science", "topic": "Photosynthesis" }
     },
-    "text": "...(full chunk text)...",
-    "source_file": "grade_9_science_ch2.pdf",
-    "chunk_index": 14
+    "text": "...(chunk text)..."
   }
 ]
 ```
 
-Pass `actions.explain` directly to `POST /explain`, `actions.question` to `POST /question`, or `actions.learning_path` to `GET /graph/learning-path`.
+> The `actions` object is pre-filled — pass it directly to `/explain`, `/question`, or `/graph/learning-path`. No extra processing needed.
+
+Optional filters: `grade`, `subject`, `bloom_level` (`remember` | `understand` | `apply` | `analyse` | `evaluate` | `create`), `top_k` (1–20).
+
+**Keyword search** (for exact term matching):
+```http
+GET /search/chapters?query=mitosis&grade=9&top_k=5
+```
 
 ---
 
-## Explanation response format
+### 3. Adaptive explanations
 
-`POST /explain` streams SSE events. Each chunk event carries a piece of the explanation text. The final `done` event carries metadata:
+Stream a RAG-grounded explanation of any CBSE topic. The explanation is grade-stage aware — vocabulary, examples, and depth automatically adjust.
 
+```http
+POST /explain
+Content-Type: application/json
+
+{
+  "grade": 9,
+  "subject": "Science",
+  "topic": "Photosynthesis",
+  "language": "en"
+}
+```
+
+Language: `"en"` (default) or `"hi"` for Hindi.
+
+#### SSE streaming
+
+The response is a stream of SSE events. Read it in your frontend:
+
+```js
+const res = await fetch('http://34.171.42.160:8000/explain', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ grade: 9, subject: 'Science', topic: 'Photosynthesis' }),
+});
+
+const reader = res.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+
+  const lines = decoder.decode(value).split('\n');
+  for (const line of lines) {
+    if (!line.startsWith('data: ')) continue;
+    const event = JSON.parse(line.slice(6));
+
+    if (event.type === 'chunk') {
+      appendToUI(event.text);            // render Markdown incrementally
+    } else if (event.type === 'done') {
+      console.log('sources:', event.source_chunks);
+      if (event.mermaid_diagram) {
+        renderMermaid(event.mermaid_diagram, event.mermaid_caption);
+      }
+    }
+  }
+}
+```
+
+**`chunk` event:**
 ```json
 { "type": "chunk", "text": "## Photosynthesis\n\nPlants use **chlorophyll**..." }
-{ "type": "done",
-  "source_chunks": ["grade_7_science_ch1[4]", "..."],
-  "model_used": "gemini-2.0-flash",
-  "stage": "Middle",
-  "mermaid_diagram": "flowchart TD\n  sunlight --> ...",
+```
+
+**`done` event:**
+```json
+{
+  "type": "done",
+  "source_chunks": ["grade_9_science_ch2[4]", "grade_9_science_ch2[5]"],
+  "model_used": "gemini-2.5-pro",
+  "stage": "Secondary",
+  "mermaid_diagram": "flowchart TD\n  Sunlight --> Chlorophyll\n  ...",
   "mermaid_caption": "Photosynthesis process"
 }
 ```
 
-The explanation text is structured Markdown:
+`mermaid_diagram` is present only for process/cycle/hierarchy topics (photosynthesis, water cycle, food chain). It is `null` for definitions and static facts.
 
-| Element | Syntax | Rendered as |
-|---------|--------|-------------|
+**Explanation text format:**
+
+| Element | Syntax | Render as |
+|---|---|---|
 | Section headings | `## Heading` | Bold section title |
 | Key vocabulary | `**term**` | Bold on first use |
 | Steps / sequences | `1. step` | Numbered list |
 | Types / properties | `- item` | Bullet list |
-| Important reminders | `> **Note:** ...` | Blue callout box |
-| Worked examples | `> **Example:** ...` | Green callout box |
-| Comparisons | `\| col \| col \|` | Table |
-| Inline formula | `$E = mc^2$` | KaTeX rendered |
+| Important notes | `> **Note:** ...` | Callout box |
+| Worked examples | `> **Example:** ...` | Callout box |
+| Inline formula | `$E = mc^2$` | KaTeX |
 | Display equation | `$$F = ma$$` | KaTeX block |
 
-`mermaid_diagram` is only present for process/cycle/hierarchy topics (e.g. photosynthesis, water cycle, food chain). It is `null` for definitions and static facts.
+**Pedagogical stage awareness:**
+
+| Grades | Stage | Tone |
+|---|---|---|
+| 6–8 | Middle | Activity-based, Indian daily-life examples |
+| 9–10 | Secondary | Formal, exam-pattern aware, NCERT-style |
+| 11–12 | Higher Secondary | Analytical, derivations, JEE/NEET aligned |
 
 ---
 
-## Exam types for question paper generation
+### 4. Question generation
+
+Stream a single CBSE-style question grounded in NCERT content.
+
+```http
+POST /question
+Content-Type: application/json
+
+{
+  "grade": 10,
+  "subject": "Science",
+  "topic": "Acids, Bases and Salts",
+  "bloom_level": "apply",
+  "difficulty": "medium",
+  "question_type": "MCQ",
+  "marks": 1
+}
+```
+
+| Field | Options |
+|---|---|
+| `question_type` | `MCQ` \| `SAQ` \| `LAQ` |
+| `bloom_level` | `remember` \| `understand` \| `apply` \| `analyse` \| `evaluate` \| `create` |
+| `difficulty` | `easy` \| `medium` \| `hard` |
+
+Same SSE streaming as `/explain`. The `done` event contains the final parsed question:
+
+```json
+{
+  "type": "done",
+  "question": "Which of the following is an example of a neutralization reaction?",
+  "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+  "correct_answer": "B",
+  "explanation": "...",
+  "bloom_level": "apply",
+  "marks": 1
+}
+```
+
+---
+
+### 5. Question paper generation
+
+Generate a complete CBSE-compliant question paper. Questions are sourced from the persistent question bank — never regenerated unnecessarily.
+
+```http
+POST /question-paper
+Content-Type: application/json
+
+{
+  "grade": 10,
+  "subject": "Science",
+  "exam_type": "monthly_test",
+  "chapters": [1, 2, 3],
+  "difficulty_mix": { "easy": 0.3, "medium": 0.5, "hard": 0.2 },
+  "include_answer_key": true
+}
+```
+
+`chapters` — omit for full syllabus. `difficulty_mix` — omit for CBSE defaults.
+
+**Exam types:**
 
 | Type | Marks | Duration | Structure |
-|------|-------|----------|-----------|
+|---|---|---|---|
 | `class_test` | 20 | 40 min | 10 MCQ + 5 SAQ |
 | `weekly_test` | 25 | 45 min | 10 MCQ + 5 SAQ (3 marks) |
 | `monthly_test` | 50 | 90 min | MCQ + SAQ + LAQ |
@@ -282,127 +281,168 @@ The explanation text is structured Markdown:
 
 Bloom's distribution is automatically enforced per CBSE norms (Remember 10–15%, Apply 25–30%, etc.).
 
-Example:
-```bash
-curl -s -X POST http://localhost:8000/question-paper \
-  -H "Content-Type: application/json" \
-  -d '{
-    "grade": 10,
-    "subject": "Science",
-    "exam_type": "pre_board",
-    "chapters": [1, 2, 3, 4, 5],
-    "include_answer_key": true
-  }'
+**List all exam types with full section structure:**
+```http
+GET /exam-types
 ```
 
 ---
 
-## Pedagogical stage awareness
+### 6. Curriculum graph
 
-Explanations auto-adjust to the student's NCF 2023 stage:
+**Get prerequisites for a topic** (what a student must know first):
+```http
+GET /graph/prerequisites?topic=Photosynthesis&grade=9&subject=Science
+```
 
-| Grades | Stage | Tone |
-|--------|-------|------|
-| 6–8 | Middle | Activity-based, Indian daily-life examples |
-| 9–10 | Secondary | Formal, exam-pattern aware, NCERT-style |
-| 11–12 | Higher Secondary | Analytical, derivations, JEE/NEET aligned |
+**Get the full ordered learning path** (most foundational → target):
+```http
+GET /graph/learning-path?topic=Photosynthesis&grade=9&subject=Science
+```
+
+Use this to build adaptive learning flows: before assigning a topic, check its learning path and surface any prerequisite gaps.
+
+**Curriculum map** (Bloom's distribution by chapter):
+```http
+GET /curriculum/9/Science
+```
 
 ---
 
-## Project structure
+## API Reference
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/` | API metadata |
+| GET | `/health` | Liveness check |
+| GET | `/docs` | Interactive OpenAPI docs |
+| GET | `/books` | List textbooks (`?grade=`, `?subject=`) |
+| GET | `/books/{grade}/{subject}/topics` | Chapter list |
+| GET | `/books/{grade}/{subject}/chapters/{n}` | Full chapter text |
+| GET | `/books/{grade}/{subject}/chapters/{n}/metadata` | Chapter metadata (fast) |
+| GET | `/search/chapters` | BM25 keyword search (`?query=`, `?grade=`, `?subject=`, `?top_k=`) |
+| GET | `/search/content` | Semantic search (`?query=`, `?grade=`, `?subject=`, `?bloom_level=`, `?top_k=`) |
+| GET | `/curriculum/{grade}/{subject}` | Bloom's distribution by chapter |
+| POST | `/explain` | Stream explanation (SSE) |
+| POST | `/question` | Stream question generation (SSE) |
+| GET | `/exam-types` | List exam types |
+| POST | `/question-paper` | Generate full question paper |
+| GET | `/graph/prerequisites` | Prerequisite topics |
+| GET | `/graph/learning-path` | Full learning path |
+
+---
+
+## Self-hosting
+
+### Prerequisites
+
+- Python 3.11+
+- [Google AI Studio](https://aistudio.google.com/apikey) API key (Gemini — free tier works for the API, paid recommended for the pipeline)
+
+### Setup
+
+```bash
+git clone https://github.com/hatchedland/ncert-mcp
+cd ncert-mcp
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+cp .env.example .env
+# Add your GOOGLE_API_KEY to .env
+```
+
+### Run the API
+
+```bash
+uvicorn src.api:app --reload --port 8000
+```
+
+### Run the MCP server
+
+```bash
+python src/mcp_server.py
+```
+
+Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "ncert-mcp": {
+      "command": "/path/to/ncert-mcp/.venv/bin/python",
+      "args": ["/path/to/ncert-mcp/src/mcp_server.py"],
+      "env": { "GOOGLE_API_KEY": "<your key>" }
+    }
+  }
+}
+```
+
+### Build the data pipeline from scratch
+
+> Takes ~90 minutes — calls Gemini 2.5 Pro per chapter (~35s × 145 chapters). All steps are idempotent.
+
+```bash
+python src/ingest.py          # Download NCERT PDFs (Grades 7–12, 14 subjects)
+python src/pipeline.py        # Chunk → Bloom-tag → embed → store (SQLite + Qdrant)
+python src/curriculum_graph.py  # Build prerequisite graph (875+ edges)
+```
+
+---
+
+## Architecture
 
 ```mermaid
-flowchart LR
-    root["ncert-mcp/"]
+flowchart TD
+    PDFs["NCERT PDFs\nGrades 7-12, 14 subjects"]
+    ingest["ingest.py"]
+    pipeline["pipeline.py\nchunk → tag → embed → store"]
+    sqlite[("SQLite\ncontent.db")]
+    qdrant[("Qdrant\nvector index")]
+    cgraph["curriculum_graph.py\n875+ prerequisite edges"]
+    mcp["mcp_server.py\n13 MCP tools · stdio"]
+    api["api.py\nFastAPI · 16 endpoints · SSE"]
+    clients["LMS / tutoring apps\nMCP hosts · frontends"]
 
-    src["src/"]
-    tools["tools/"]
-    examples["examples/"]
-    root_files["requirements.txt\n.env.example\nREADME.md"]
+    PDFs --> ingest --> pipeline
+    pipeline --> sqlite & qdrant
+    sqlite & qdrant --> cgraph
+    cgraph --> mcp & api
+    api --> clients
 
-    config["config.py\npaths, model names, API keys"]
-    db["db.py\nSQLite + Qdrant init"]
-    ingest["ingest.py\ndownload NCERT PDFs"]
-    pipeline["pipeline.py\nchunk, tag, embed, store"]
-    text_cache["text_cache.py\nPDF to plain text cached"]
-    curr_graph["curriculum_graph.py\nbuild prerequisite graph"]
-    mcp["mcp_server.py\nFastMCP, 13 tools, stdio"]
-    api["api.py\nFastAPI, 17 endpoints, SSE"]
-    auth["auth.py\nSupabase JWT, token cache"]
-    usage["usage.py\nper-user rate limiting"]
-
-    fs["filesystem.py\nBM25, textbook tools"]
-    dbtools["database.py\nsemantic search, curriculum map"]
-    gen["generation.py\nexplain, question, streaming"]
-    graphtools["graph.py\nprerequisites, learning path"]
-    qp["question_paper.py\nfull paper, question bank"]
-
-    chat["chat.html\ndemo UI, Supabase auth"]
-
-    root --> src
-    root --> examples
-    root --> root_files
-
-    src --> config
-    src --> db
-    src --> ingest
-    src --> pipeline
-    src --> text_cache
-    src --> curr_graph
-    src --> mcp
-    src --> api
-    src --> auth
-    src --> usage
-    src --> tools
-
-    tools --> fs
-    tools --> dbtools
-    tools --> gen
-    tools --> graphtools
-    tools --> qp
-
-    examples --> chat
-
-    style src      fill:#f0fdf4,stroke:#16a34a
-    style tools    fill:#f0fdf4,stroke:#16a34a
-    style examples fill:#faf5ff,stroke:#9333ea
-    style mcp      fill:#dcfce7,stroke:#16a34a
-    style api      fill:#dcfce7,stroke:#16a34a
-    style db       fill:#fef9c3,stroke:#ca8a04
-    style auth     fill:#fff7ed,stroke:#ea580c
-    style usage    fill:#fff7ed,stroke:#ea580c
+    style sqlite  fill:#fef9c3,stroke:#ca8a04
+    style qdrant  fill:#fef9c3,stroke:#ca8a04
+    style mcp     fill:#f0fdf4,stroke:#16a34a
+    style api     fill:#f0fdf4,stroke:#16a34a
+    style clients fill:#faf5ff,stroke:#9333ea
 ```
 
 ---
-
 
 ## Tech stack
 
-| Layer | Choice | Why |
-|-------|--------|-----|
-| MCP server | FastMCP (Python) | Simplest stdio MCP; works with Claude Desktop + Claude Code |
-| REST API | FastAPI + uvicorn | Async, auto-docs, streaming responses |
-| Vector DB | Qdrant (local) | No Docker needed for local dev; same API for cloud |
-| Metadata DB | SQLite | Zero install; PostgreSQL-compatible schema for prod |
-| Embeddings | `gemini-embedding-001` (3072-dim) | Best available on Gemini API |
-| Generation | `gemini-2.5-pro` | Thinking mode for tagging accuracy |
-| Schema | NCERT Grades 7–12 | 145 chapters, 14 subjects, 9,500+ distinct topics |
+| Layer | Choice |
+|---|---|
+| MCP server | FastMCP (Python) |
+| REST API | FastAPI + uvicorn |
+| Vector DB | Qdrant (local) |
+| Metadata DB | SQLite |
+| Embeddings | `gemini-embedding-001` (3072-dim) |
+| Generation | `gemini-2.5-pro` (thinking mode) |
+| Curriculum | NCERT Grades 7–12 · 145 chapters · 14 subjects |
 
 ---
 
 ## Contributing
 
-Pull requests welcome. To add a new subject or extend the schema:
+To add a new subject:
 
 1. Add entries to `NCERT_TEXTBOOK_CHAPTERS` and `CHAPTER_TITLES` in `src/tools/filesystem.py`
-2. Re-run `src/ingest.py` to download the new PDFs
-3. Re-run `src/pipeline.py` — already-processed chapters are skipped
-4. Re-run `src/curriculum_graph.py` — new edges are appended
+2. Re-run `src/ingest.py`, `src/pipeline.py`, `src/curriculum_graph.py`
 
-To add a new MCP tool:
-1. Implement the function in the appropriate `src/tools/*.py` file
-2. Wrap it with `@mcp.tool()` in `src/mcp_server.py`
-3. Add the corresponding endpoint in `src/api.py`
+To add a new tool:
 
----
-
+1. Implement in the relevant `src/tools/*.py`
+2. Wrap with `@mcp.tool()` in `src/mcp_server.py`
+3. Add the endpoint in `src/api.py`
